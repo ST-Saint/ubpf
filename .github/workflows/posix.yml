@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (c) 2022-present, IO Visor Project
+# SPDX-License-Identifier: Apache-2.0
 # All rights reserved.
 #
 # This source code is licensed in accordance with the terms specified in
@@ -61,13 +62,13 @@ jobs:
 
     - name: Initialize CodeQL
       if: inputs.build_codeql == true
-      uses: github/codeql-action/init@cc7986c02bac29104a72998e67239bb5ee2ee110
+      uses: github/codeql-action/init@18fe527fa8b29f134bb91f32f1a5dc5abb15ed7f
       with:
         languages: 'cpp'
 
     - name: Generate the cache key
       id: cache_key
-      run: echo ::set-output name=VALUE::platform-${{ inputs.platform }}_arch=${{ inputs.arch }}_type-${{ inputs.build_type }}_sanitizers-${{ inputs.enable_sanitizers }}_coverage-${{ inputs.enable_coverage }}_scan_build-${{ inputs.scan_build }}
+      run: echo "VALUE=platform-${{ inputs.platform }}_arch=${{ inputs.arch }}_type-${{ inputs.build_type }}_sanitizers-${{ inputs.enable_sanitizers }}_coverage-${{ inputs.enable_coverage }}_scan_build-${{ inputs.scan_build }}" >> $GITHUB_OUTPUT
 
     - name: Update the cache (ccache)
       uses: actions/cache@v3.0.11
@@ -182,7 +183,7 @@ jobs:
 
     - name: Run the local bpf_conformance tests
       run: |
-        export BPF_CONFORMANCE_RUNNER="build_bpf_conformance/src/bpf_conformance_runner"
+        export BPF_CONFORMANCE_RUNNER="build_bpf_conformance/bin/bpf_conformance_runner"
         export BPF_CONFORMANCE_TEST_DIR="--test_file_directory tests"
 
         # For arm64, we need to run the tests in qemu, so use the scripts
@@ -199,8 +200,10 @@ jobs:
 
     - name: Run the upstream bpf_conformance tests
       run: |
-        export BPF_CONFORMANCE_RUNNER="build_bpf_conformance/src/bpf_conformance_runner"
+        export BPF_CONFORMANCE_RUNNER="build_bpf_conformance/bin/bpf_conformance_runner"
         export BPF_CONFORMANCE_TEST_DIR="--test_file_directory external/bpf_conformance/tests"
+        # Exclude tests that check atomic operations, as they are not supported by uBPF yet.
+        export BPF_CONFORMANCE_TEST_FILTER="--exclude_regex lock"
 
         # For arm64, we need to run the tests in qemu, so use the scripts
         if [[ "${{ inputs.arch }}" == "arm64" ]] ; then
@@ -211,8 +214,8 @@ jobs:
           export BPF_CONFORMANCE_PLUGIN_INTERPRET="--plugin_path build/bin/ubpf_plugin --plugin_options --interpret"
         fi
 
-        ${BPF_CONFORMANCE_RUNNER} ${BPF_CONFORMANCE_TEST_DIR} ${BPF_CONFORMANCE_PLUGIN_JIT}
-        ${BPF_CONFORMANCE_RUNNER} ${BPF_CONFORMANCE_TEST_DIR} ${BPF_CONFORMANCE_PLUGIN_INTERPRET}
+        ${BPF_CONFORMANCE_RUNNER} ${BPF_CONFORMANCE_TEST_DIR} ${BPF_CONFORMANCE_TEST_FILTER} ${BPF_CONFORMANCE_PLUGIN_JIT}
+        ${BPF_CONFORMANCE_RUNNER} ${BPF_CONFORMANCE_TEST_DIR} ${BPF_CONFORMANCE_TEST_FILTER} ${BPF_CONFORMANCE_PLUGIN_INTERPRET}
 
     - name: Run the CTest suite
       if: inputs.arch != 'arm64'
@@ -293,9 +296,9 @@ jobs:
       id: package_locations
       if: inputs.upload_packages == true
       run: |
-        echo ::set-output name=REL_DEB_PACKAGE_PATH::$(ls build/*.deb)
-        echo ::set-output name=REL_RPM_PACKAGE_PATH::$(ls build/*.rpm)
-        echo ::set-output name=REL_TGZ_PACKAGE_PATH::$(ls build/*.tar.gz)
+        echo "REL_DEB_PACKAGE_PATH=$(ls build/*.deb)" >> $GITHUB_OUTPUT
+        echo "REL_RPM_PACKAGE_PATH=$(ls build/*.rpm)" >> $GITHUB_OUTPUT
+        echo "REL_TGZ_PACKAGE_PATH=$(ls build/*.tar.gz)" >> $GITHUB_OUTPUT
 
     - name: Upload the DEB package
       if: inputs.upload_packages == true && inputs.platform == 'ubuntu-20.04'
@@ -331,5 +334,4 @@ jobs:
 
     - name: Perform CodeQL Analysis
       if: inputs.build_codeql == true
-      uses: github/codeql-action/analyze@cc7986c02bac29104a72998e67239bb5ee2ee110
-
+      uses: github/codeql-action/analyze@18fe527fa8b29f134bb91f32f1a5dc5abb15ed7f
