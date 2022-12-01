@@ -20,6 +20,10 @@
 #ifndef UBPF_H
 #define UBPF_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <ubpf_config.h>
 
 #include <stdio.h>
@@ -289,5 +293,9 @@ typedef bool (*ubpf_bounds_check)(void* context, uint64_t addr, uint64_t size);
  */
 int
 ubpf_register_data_bounds_check(struct ubpf_vm* vm, void* user_context, ubpf_bounds_check bounds_check);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
