@@ -19,6 +19,7 @@
 #define UBPF_INT_H
 
 #include <ubpf.h>
+#include "ubpf_slh.h"
 #include "ebpf.h"
 
 struct ebpf_inst;
@@ -27,6 +28,7 @@ typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64
 struct ubpf_vm
 {
     struct ebpf_inst* insts;
+    struct ubpf_cfg* cfg;
     uint16_t num_insts;
     ubpf_jit_fn jitted;
     size_t jitted_size;
