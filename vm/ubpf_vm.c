@@ -69,6 +69,12 @@ ubpf_create(void)
         return NULL;
     }
 
+    vm->cfg = calloc(1, sizeof(*vm->cfg));
+    if (vm->cfg == NULL) {
+        ubpf_destroy(vm);
+        return NULL;
+    }
+
     vm->ext_funcs = calloc(MAX_EXT_FUNCS, sizeof(*vm->ext_funcs));
     if (vm->ext_funcs == NULL) {
         ubpf_destroy(vm);
@@ -99,6 +105,7 @@ void
 ubpf_destroy(struct ubpf_vm* vm)
 {
     ubpf_unload_code(vm);
+    free(vm->cfg);
     free(vm->ext_funcs);
     free(vm->ext_func_names);
     free(vm);

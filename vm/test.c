@@ -4,6 +4,7 @@
 /*
  * Copyright 2015 Big Switch Networks, Inc
  * Copyright 2017 Google Inc.
+ * Copyright 2023 Linaro Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@
  * limitations under the License.
  */
 
+#include "ebpf.h"
 #include <ubpf_config.h>
 
 #define _GNU_SOURCE
@@ -30,7 +32,9 @@
 #include <getopt.h>
 #include <errno.h>
 #include <math.h>
+#include "ubpf_int.h"
 #include "ubpf.h"
+#include "ubpf_slh.h"
 
 #include "../bpf/bpf.h"
 
@@ -267,6 +271,26 @@ load:
             free(mem);
             return 1;
         }
+        parse_ebpf_inst(vm);
+        print_cfg(vm->cfg->entry, 1);
+        char* filename = "bpf_native";
+        printf("fn size: %lu %p\n", vm->jitted_size, fn);
+        FILE* fp;
+        fp = fopen(filename, "wb"); // Open the file for writing in binary mode
+        if (fp == NULL) {
+            fprintf(stderr, "Error opening file %s\n", filename);
+            exit(1);
+        }
+        size_t bytes_written = fwrite(fn, 1, vm->jitted_size, fp); // Write the memory to file
+        if (bytes_written != vm->jitted_size) {
+            fprintf(stderr, "Error writing to file %s\n", filename);
+            exit(1);
+        }
+
+        fclose(fp); // Close the file
+        struct ebpf_inst* slh_insts = calloc(65536, sizeof(struct ebpf_inst));
+        instrument_slh(vm, vm->cfg->entry, slh_insts);
+
         ret = fn(mem, mem_len);
     } else {
         if (ubpf_exec(vm, mem, mem_len, &ret) < 0)
@@ -324,7 +348,8 @@ readfile(const char* path, size_t maxlen, size_t* len)
     return (void*)data;
 }
 
-#ifndef __GLIBC__
+// REVIEW unknown issue
+/* #ifndef __GLIBC__ */
 void*
 memfrob(void* s, size_t n)
 {
@@ -333,7 +358,7 @@ memfrob(void* s, size_t n)
     }
     return s;
 }
-#endif
+/* #endif */
 
 static uint64_t
 gather_bytes(uint8_t a, uint8_t b, uint8_t c, uint8_t d, uint8_t e)

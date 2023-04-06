@@ -39,12 +39,14 @@ ubpf_jit_x86_64.o: ubpf_config.h ubpf_jit_x86_64.c ubpf_jit_x86_64.h
 
 ubpf_vm.o: ubpf_config.h
 
+ubpf_slh.o: ubpf_slh.c ubpf_slh.h
+
 test.o: ubpf_config.h
 
-libubpf.a: ubpf_vm.o ubpf_jit_arm64.o ubpf_jit_x86_64.o ubpf_loader.o ubpf_jit.o
+libubpf.a: ubpf_vm.o ubpf_jit_arm64.o ubpf_jit_x86_64.o ubpf_loader.o ubpf_jit.o ubpf_slh.o
 	ar rc $@ $^
 
-libubpf.so: ubpf_vm.o ubpf_jit_arm64.o ubpf_jit_x86_64.o ubpf_loader.o ubpf_jit.o
+libubpf.so: ubpf_vm.o ubpf_jit_arm64.o ubpf_jit_x86_64.o ubpf_loader.o ubpf_jit.o ubpf_slh.o
 	$(CC) -shared -o $@ $^ $(LDLIBS)
 
 .PHONY: ubpf_config.h
