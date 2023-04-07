@@ -3,50 +3,39 @@
 
 #include "ebpf.h"
 #include "ubpf_int.h"
+#include "ubpf_jit_x86_64.h"
 #include <stdint.h>
 
-struct ubpf_basic_block
-{
-    /* the index of the first instruction in ubpf_vm->ebpf_inst */
-    uint32_t index;
-    uint32_t num_inst;
-    struct ebpf_inst* insts;
-    struct ubpf_basic_block *fallthrough, *jump;
-};
-
-struct ubpf_cfg
-{
-    struct ubpf_basic_block* entry;
-    struct ubpf_basic_block* maps[65536];
-};
-
-enum Registers
-{
-    RAX,
-    RBX,
-    RCX,
-    RDX,
-    RSI,
-    RDI,
-    RBP,
-    RSP,
-    R8,
-    R9,
-    R10,
-    R11,
-    R12,
-    R13,
-    R14,
-    R15
-};
+/* enum ubpf_registers */
+/* { */
+/*     rax, */
+/*     rbx, */
+/*     rcx, */
+/*     rdx, */
+/*     rsi, */
+/*     rdi, */
+/*     rbp, */
+/*     rsp, */
+/*     r8, */
+/*     r9, */
+/*     r10, */
+/*     r11, */
+/*     r12, */
+/*     r13, */
+/*     r14, */
+/*     r15 */
+/* }; */
 
 char*
-register_name(uint32_t reg);
-
+register_name(uint8_t reg);
+char*
+instruct_opname(uint8_t opcode);
 int
 parse_ebpf_inst(struct ubpf_vm* vm);
 void
-print_cfg(struct ubpf_basic_block* bb, int depth);
+print_inst(struct ubpf_vm* vm);
+void
+print_cfg(struct ubpf_basic_block* bb);
 void
 truncate_cfg(struct ubpf_vm* vm, struct ubpf_basic_block* bb, uint32_t index, uint32_t target_pc);
 void

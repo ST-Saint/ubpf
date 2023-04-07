@@ -10,6 +10,8 @@
 project("ubpf")
 cmake_minimum_required(VERSION 3.16)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if (UBPF_INSTALL_GIT_HOOKS AND EXISTS "${PROJECT_SOURCE_DIR}/.git/hooks")
     # Install Git pre-commit hook
     file(COPY scripts/pre-commit scripts/commit-msg
@@ -38,4 +40,3 @@ endif()
 if(UBPF_ENABLE_PACKAGE)
   include("cmake/packaging.cmake")
 endif()
-

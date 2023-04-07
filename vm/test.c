@@ -272,9 +272,8 @@ load:
             return 1;
         }
         parse_ebpf_inst(vm);
-        print_cfg(vm->cfg->entry, 1);
-        char* filename = "bpf_native";
         printf("fn size: %lu %p\n", vm->jitted_size, fn);
+        char* filename = "bpf_native";
         FILE* fp;
         fp = fopen(filename, "wb"); // Open the file for writing in binary mode
         if (fp == NULL) {
@@ -288,8 +287,8 @@ load:
         }
 
         fclose(fp); // Close the file
-        struct ebpf_inst* slh_insts = calloc(65536, sizeof(struct ebpf_inst));
-        instrument_slh(vm, vm->cfg->entry, slh_insts);
+        /* struct ebpf_inst* slh_insts = calloc(65536, sizeof(struct ebpf_inst)); */
+        /* instrument_slh(vm, vm->cfg->entry, slh_insts); */
 
         ret = fn(mem, mem_len);
     } else {

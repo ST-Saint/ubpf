@@ -22,11 +22,27 @@
 #define UBPF_INT_H
 
 #include <ubpf.h>
-#include "ubpf_slh.h"
 #include "ebpf.h"
+#include "ubpf_typesystem.h"
 
 struct ebpf_inst;
 typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4);
+
+struct ubpf_basic_block
+{
+    /* the index of the first instruction in ubpf_vm->ebpf_inst */
+    uint32_t base_index;
+    uint32_t num_inst;
+    ubpf_basic_block_type* type;
+    struct ebpf_inst* insts;
+    struct ubpf_basic_block *fallthrough, *jump;
+};
+
+struct ubpf_cfg
+{
+    struct ubpf_basic_block* entry;
+    struct ubpf_basic_block* maps[65536];
+};
 
 struct ubpf_vm
 {

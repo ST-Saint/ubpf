@@ -1,3 +1,6 @@
+// Copyright (c) 2015 Big Switch Networks, Inc
+// SPDX-License-Identifier: Apache-2.0
+
 #
 # Copyright (c) 2022-present, IO Visor Project
 # All rights reserved.
@@ -32,6 +35,10 @@ add_library("ubpf"
 
   ebpf.h
   ubpf_int.h
+  ubpf_slh.h
+  ubpf_typesystem.h
+  ubpf_slh.c
+  ubpf_typesystem.c
   ubpf_jit_arm64.c
   ubpf_jit.c
   ubpf_jit_x86_64.c
