@@ -1,6 +1,5 @@
-// Copyright (c) 2015 Big Switch Networks, Inc
-// SPDX-License-Identifier: Apache-2.0
-
+# Copyright (c) 2015 Big Switch Networks, Inc
+# SPDX-License-Identifier: Apache-2.0
 #
 # Copyright (c) 2022-present, IO Visor Project
 # All rights reserved.

@@ -154,16 +154,14 @@ parse_ebpf_inst(struct ubpf_vm* vm)
 void
 print_inst(struct ubpf_vm* vm)
 {
-    struct ubpf_basic_block* bb = vm->cfg->entry;
-    fprintf(stdout, "test instrument %d\n", bb->num_inst);
     // check register usage
-    for (int i = 0; i < bb->num_inst; ++i) {
-        struct ebpf_inst inst = ubpf_fetch_instruction(vm, bb->base_index + i);
+    for (int i = 0; i < vm->num_insts; ++i) {
+        struct ebpf_inst inst = ubpf_fetch_instruction(vm, i);
 
         fprintf(
             stdout,
             "index: %d,\top: %x %x %x\t%*s,\tsrc reg: %s,\tdst reg: %s\toff: %d\timm: %d\n",
-            bb->base_index + i,
+            i,
             inst.opcode,
             inst.src,
             inst.dst,
