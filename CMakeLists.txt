@@ -27,6 +27,7 @@ if(UBPF_ENABLE_TESTS)
   include("CTest")
 endif()
 
+add_compile_options("-g")
 add_subdirectory("vm")
 
 if(UBPF_ENABLE_TESTS)

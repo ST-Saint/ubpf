@@ -33,9 +33,11 @@ instruct_opname(uint8_t opcode);
 int
 parse_ebpf_inst(struct ubpf_vm* vm);
 void
-print_inst(struct ubpf_vm* vm);
+print_vm_insts(struct ubpf_vm* vm);
 void
-print_cfg(struct ubpf_basic_block* bb);
+print_inst(struct ebpf_inst* inst, uint32_t pc);
+void
+print_cfg(struct ubpf_cfg* cfg);
 void
 truncate_cfg(struct ubpf_vm* vm, struct ubpf_basic_block* bb, uint32_t index, uint32_t target_pc);
 void

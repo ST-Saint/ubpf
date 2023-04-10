@@ -1,6 +1,8 @@
 #include "ebpf.h"
 #include "ubpf_int.h"
+#include "ubpf_jit_x86_64.h"
 #include "ubpf_slh.h"
+#include "ubpf_typesystem.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,10 +18,15 @@ init_bb(struct ubpf_basic_block* bb)
 {
     bb->base_index = bb->num_inst = 0;
     bb->insts = NULL;
+    bb->type = calloc(1, sizeof(ubpf_basic_block_type));
+    for (int reg = 0; reg < 16; ++reg) {
+        bb->type->staleness[reg] = 0;
+        bb->type->source[reg] = -1;
+    }
     bb->fallthrough = bb->jump = NULL;
 }
 
-// FIXME unconditional jump don't have fallthrough BB
+// REVIEW unconditional jump don't have fallthrough BB
 void
 truncate_cfg(struct ubpf_vm* vm, struct ubpf_basic_block* bb, uint32_t index, uint32_t target_pc)
 {
@@ -55,7 +62,7 @@ int
 parse_ebpf_inst(struct ubpf_vm* vm)
 {
     /* struct ebpf_inst *inst = NULL; */
-    vm->cfg = malloc(sizeof(struct ubpf_cfg));
+    vm->cfg = calloc(1, sizeof(struct ubpf_cfg));
 
     struct ubpf_cfg* cfg = vm->cfg;
     struct ubpf_basic_block* bb;
@@ -72,6 +79,11 @@ parse_ebpf_inst(struct ubpf_vm* vm)
         struct ebpf_inst inst = ubpf_fetch_instruction(vm, i);
         bb = cfg->maps[i];
         bb->num_inst += 1;
+        if (bb->base_index == i) {
+            cfg->bbq[cfg->bb_num] = bb;
+            ++cfg->bb_num;
+        }
+
         switch (inst.opcode) {
         /* BPF_JA
            0x00
@@ -134,7 +146,12 @@ parse_ebpf_inst(struct ubpf_vm* vm)
             target_pc = i + inst.offset + 1;
             truncate_cfg(vm, bb, i, target_pc);
             break;
-
+        case EBPF_OP_LDDW: {
+            // LDDW skip next instruction
+            ++bb->num_inst;
+            ++i;
+            printf("skip i: %d\n", i);
+        }
         default:
             if (i + 1 < vm->num_insts) {
                 if (cfg->maps[i + 1] == NULL) {
@@ -146,36 +163,42 @@ parse_ebpf_inst(struct ubpf_vm* vm)
             break;
         }
     }
-    print_inst(vm);
-    print_cfg(cfg->entry);
-    return 0;
+    print_vm_insts(vm);
+    print_cfg(cfg);
+    return typecheck(vm);
 }
 
 void
-print_inst(struct ubpf_vm* vm)
+print_vm_insts(struct ubpf_vm* vm)
 {
     // check register usage
     for (int i = 0; i < vm->num_insts; ++i) {
         struct ebpf_inst inst = ubpf_fetch_instruction(vm, i);
-
-        fprintf(
-            stdout,
-            "index: %d,\top: %x %x %x\t%*s,\tsrc reg: %s,\tdst reg: %s\toff: %d\timm: %d\n",
-            i,
-            inst.opcode,
-            inst.src,
-            inst.dst,
-            20,
-            instruct_opname(inst.opcode),
-            register_name(inst.src),
-            register_name(inst.dst),
-            inst.offset,
-            inst.imm);
+        print_inst(&inst, i);
+        if (inst.opcode == EBPF_OP_LDDW)
+            ++i;
     }
 }
 
 void
-print_cfg(struct ubpf_basic_block* entry_basic_block)
+print_inst(struct ebpf_inst* inst, uint32_t pc)
+{
+    // check register usage
+
+    fprintf(
+        stdout,
+        "index: %d,\t%*s,\tsrc reg: %s,\tdst reg: %s\toff:\t%d\timm: %d\n",
+        pc,
+        20,
+        instruct_opname(inst->opcode),
+        register_name(inst->src),
+        register_name(inst->dst),
+        inst->offset,
+        inst->imm);
+}
+
+void
+print_cfg(struct ubpf_cfg* cfg)
 {
     fprintf(stdout, "test instrument done\n");
 
@@ -187,22 +210,13 @@ print_cfg(struct ubpf_basic_block* entry_basic_block)
         fprintf(stderr, "Error opening file %s\n", filename);
         exit(1);
     }
-    char header[64] = "digraph ubpf_cfg {\n\tnode [shape=square];";
+    char header[64] = "digraph ubpf_cfg {\n\tnode [shape=square];\n";
     char footer[32] = "\n}";
     char buffer[128] = {};
-    struct ubpf_basic_block* queue[1024] = {};
-    int32_t visit_set[1024] = {}, front_index, back_index;
-    front_index = back_index = 0;
-    queue[back_index++] = entry_basic_block;
     fwrite(header, sizeof(char), strlen(header), fp);
-    while (front_index < back_index) {
-        struct ubpf_basic_block *bb = queue[front_index++], *fallthrough, *jump;
-        if (visit_set[bb->base_index]) {
-            continue;
-        }
-        sprintf(buffer, "\t\"[%d:%d)\";\n", bb->base_index, bb->base_index + bb->num_inst);
-        fwrite(buffer, sizeof(char), strlen(buffer), fp);
-        visit_set[bb->base_index] = 1;
+    for (int i = 0; i < cfg->bb_num; ++i) {
+        struct ubpf_basic_block *bb = cfg->bbq[i], *fallthrough, *jump;
+
         fallthrough = bb->fallthrough;
         jump = bb->jump;
         if (fallthrough != NULL) {
@@ -214,7 +228,6 @@ print_cfg(struct ubpf_basic_block* entry_basic_block)
                 fallthrough->base_index,
                 fallthrough->base_index + fallthrough->num_inst);
             fwrite(buffer, sizeof(char), strlen(buffer), fp);
-            queue[back_index++] = fallthrough;
         }
         if (jump != NULL) {
             sprintf(
@@ -225,7 +238,6 @@ print_cfg(struct ubpf_basic_block* entry_basic_block)
                 jump->base_index,
                 jump->base_index + jump->num_inst);
             fwrite(buffer, sizeof(char), strlen(buffer), fp);
-            queue[back_index++] = jump;
         }
     }
     fwrite(footer, sizeof(char), strlen(footer), fp);
@@ -369,7 +381,7 @@ instruct_opname(uint8_t opcode)
     case EBPF_OP_STXDW:
         return "EBPF_OP_STXDW";
     case EBPF_OP_LDDW:
-        return "EBPF_OP_LDD";
+        return "EBPF_OP_LDDW";
     case EBPF_MODE_JA:
         return "EBPF_MODE_JA";
     case EBPF_MODE_JEQ:

@@ -271,7 +271,10 @@ load:
             free(mem);
             return 1;
         }
-        parse_ebpf_inst(vm);
+        if (parse_ebpf_inst(vm)) {
+            fprintf(stderr, "BPF program is specutative vulnerbale");
+            return 1;
+        }
         printf("fn size: %lu %p\n", vm->jitted_size, fn);
         char* filename = "bpf_native";
         FILE* fp;

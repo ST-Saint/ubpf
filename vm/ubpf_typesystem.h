@@ -5,7 +5,12 @@
 /*   int freshness[16]; */
 /* }; */
 
+#include "ubpf_int.h"
 #include <stdint.h>
-typedef uint32_t ubpf_basic_block_type[16];
+
+int
+parse_basic_block(struct ubpf_vm* vm, struct ubpf_basic_block* bb);
+int
+typecheck(struct ubpf_vm* vm);
 
 #endif

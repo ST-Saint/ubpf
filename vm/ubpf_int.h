@@ -21,12 +21,20 @@
 #ifndef UBPF_INT_H
 #define UBPF_INT_H
 
+#include <stdint.h>
 #include <ubpf.h>
 #include "ebpf.h"
-#include "ubpf_typesystem.h"
+
+#define MAX_BASIC_BLOCK 1024
 
 struct ebpf_inst;
 typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4);
+
+typedef struct ubpf_basic_block_type
+{
+    uint32_t staleness[16];
+    uint32_t source[16];
+} ubpf_basic_block_type;
 
 struct ubpf_basic_block
 {
@@ -40,8 +48,10 @@ struct ubpf_basic_block
 
 struct ubpf_cfg
 {
+    uint32_t bb_num;
     struct ubpf_basic_block* entry;
     struct ubpf_basic_block* maps[65536];
+    struct ubpf_basic_block* bbq[MAX_BASIC_BLOCK];
 };
 
 struct ubpf_vm
