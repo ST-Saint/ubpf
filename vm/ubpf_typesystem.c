@@ -22,6 +22,10 @@ typecheck(struct ubpf_vm* vm)
     for (int i = 0; i < cfg->bb_num; ++i) {
         ret |= parse_basic_block(vm, cfg->bbq[i]);
     }
+    if (ret) {
+        return ret;
+    }
+    ret = parse_basic_block_graph(vm);
     return ret;
 }
 
@@ -37,6 +41,15 @@ typeError(struct ubpf_vm* vm, uint32_t pc, uint32_t source_pc)
     fprintf(stdout, "stale source:\t");
     print_inst(&source_inst, source_pc);
     fprintf(stdout, "\n");
+}
+
+int
+parse_basic_block_graph(struct ubpf_vm* vm)
+{
+    struct ubpf_cfg* cfg = vm->cfg;
+    for (int i = 0; i < cfg->bb_num; ++i) {
+    }
+    return 0;
 }
 
 int

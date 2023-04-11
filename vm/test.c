@@ -272,7 +272,7 @@ load:
             return 1;
         }
         if (parse_ebpf_inst(vm)) {
-            fprintf(stderr, "BPF program is specutative vulnerbale");
+            fprintf(stderr, "BPF program is specutative vulnerbale\n");
             return 1;
         }
         printf("fn size: %lu %p\n", vm->jitted_size, fn);

@@ -11,6 +11,8 @@
 int
 parse_basic_block(struct ubpf_vm* vm, struct ubpf_basic_block* bb);
 int
+parse_basic_block_graph(struct ubpf_vm* vm);
+int
 typecheck(struct ubpf_vm* vm);
 
 #endif
