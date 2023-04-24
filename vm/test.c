@@ -271,10 +271,6 @@ load:
             free(mem);
             return 1;
         }
-        if (parse_ebpf_inst(vm)) {
-            fprintf(stderr, "BPF program is specutative vulnerbale\n");
-            return 1;
-        }
         printf("fn size: %lu %p\n", vm->jitted_size, fn);
         char* filename = "bpf_native";
         FILE* fp;
@@ -293,6 +289,10 @@ load:
         /* struct ebpf_inst* slh_insts = calloc(65536, sizeof(struct ebpf_inst)); */
         /* instrument_slh(vm, vm->cfg->entry, slh_insts); */
 
+        if (parse_ebpf_inst(vm)) {
+            fprintf(stderr, "BPF program is speculative vulnerable\n");
+            return 1;
+        }
         ret = fn(mem, mem_len);
     } else {
         if (ubpf_exec(vm, mem, mem_len, &ret) < 0)

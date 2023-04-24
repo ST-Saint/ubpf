@@ -26,22 +26,27 @@
 #include "ebpf.h"
 
 #define MAX_BASIC_BLOCK 1024
+#define MAX_INSTRUCTIOSN 65536
 
 struct ebpf_inst;
 typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4);
 
-typedef struct ubpf_basic_block_type
+#define TYPE_DIMENSION (17 + 1)
+
+struct ubpf_instruction_type
 {
-    uint32_t staleness[16];
-    uint32_t source[16];
-} ubpf_basic_block_type;
+    int32_t dist[TYPE_DIMENSION][TYPE_DIMENSION];
+    int32_t source[16];
+    int32_t sink[16];
+    int32_t st_dist, reg;
+};
 
 struct ubpf_basic_block
 {
     /* the index of the first instruction in ubpf_vm->ebpf_inst */
     uint32_t base_index;
     uint32_t num_inst;
-    ubpf_basic_block_type* type;
+    struct ubpf_instruction_type type[MAX_INSTRUCTIOSN];
     struct ebpf_inst* insts;
     struct ubpf_basic_block *fallthrough, *jump;
 };
@@ -50,7 +55,7 @@ struct ubpf_cfg
 {
     uint32_t bb_num;
     struct ubpf_basic_block* entry;
-    struct ubpf_basic_block* maps[65536];
+    struct ubpf_basic_block* maps[MAX_INSTRUCTIOSN];
     struct ubpf_basic_block* bbq[MAX_BASIC_BLOCK];
 };
 

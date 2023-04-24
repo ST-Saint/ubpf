@@ -18,11 +18,13 @@ init_bb(struct ubpf_basic_block* bb)
 {
     bb->base_index = bb->num_inst = 0;
     bb->insts = NULL;
-    bb->type = calloc(1, sizeof(ubpf_basic_block_type));
-    for (int reg = 0; reg < 16; ++reg) {
-        bb->type->staleness[reg] = 0;
-        bb->type->source[reg] = -1;
-    }
+    /* bb->type = calloc(1, sizeof(ubpf_basic_block_type)); */
+    /* for (int reg = 0; reg < 16; ++reg) { */
+    /*     bb->type.source[reg] = UNREACHABLE; */
+    /*     bb->type.sink[reg] = UNREACHABLE; */
+    /*     bb->type.st_dist = UNREACHABLE; */
+    /*     bb->type.reg = -1; */
+    /* } */
     bb->fallthrough = bb->jump = NULL;
 }
 
@@ -150,7 +152,6 @@ parse_ebpf_inst(struct ubpf_vm* vm)
             // LDDW skip next instruction
             ++bb->num_inst;
             ++i;
-            printf("skip i: %d\n", i);
         }
         default:
             if (i + 1 < vm->num_insts) {
@@ -187,7 +188,7 @@ print_inst(struct ebpf_inst* inst, uint32_t pc)
 
     fprintf(
         stdout,
-        "index: %d,\t%*s,\tsrc reg: %s,\tdst reg: %s\toff:\t%d\timm: %d\n",
+        "Instruction:\t%d,\t%*s,\tsrc reg: %s,\tdst reg: %s\toff:\t%d\timm: %d\n",
         pc,
         20,
         instruct_opname(inst->opcode),
