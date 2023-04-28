@@ -33,7 +33,7 @@ typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64
 
 #define TYPE_DIMENSION (17 + 1)
 
-struct ubpf_instruction_type
+struct ubpf_spectre_type
 {
     int32_t dist[TYPE_DIMENSION][TYPE_DIMENSION];
     int32_t source[16];
@@ -44,9 +44,11 @@ struct ubpf_instruction_type
 struct ubpf_basic_block
 {
     /* the index of the first instruction in ubpf_vm->ebpf_inst */
+    uint32_t id;
     uint32_t base_index;
     uint32_t num_inst;
-    struct ubpf_instruction_type type[MAX_INSTRUCTIOSN];
+    struct ubpf_spectre_type* type;
+    struct ubpf_spectre_type types[MAX_INSTRUCTIOSN];
     struct ebpf_inst* insts;
     struct ubpf_basic_block *fallthrough, *jump;
 };
@@ -54,9 +56,10 @@ struct ubpf_basic_block
 struct ubpf_cfg
 {
     uint32_t bb_num;
-    struct ubpf_basic_block* entry;
+    struct ubpf_basic_block *entry, *exit;
     struct ubpf_basic_block* maps[MAX_INSTRUCTIOSN];
     struct ubpf_basic_block* bbq[MAX_BASIC_BLOCK];
+    struct ubpf_spectre_type path_type[MAX_BASIC_BLOCK];
 };
 
 struct ubpf_vm

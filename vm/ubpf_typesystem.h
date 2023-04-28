@@ -25,22 +25,36 @@
     })
 
 int
-parse_basic_block(struct ubpf_vm* vm, struct ubpf_basic_block* bb);
+check_basic_block(struct ubpf_vm* vm, struct ubpf_basic_block* bb);
 
 int
-check_basic_block_graph(struct ubpf_vm* vm);
+check_DAG(struct ubpf_vm* vm);
 
-struct ubpf_instruction_type
+void
+ubpf_type_merge(struct ubpf_spectre_type* merge_type, struct ubpf_spectre_type* type);
+
+struct ubpf_spectre_type
 parse_instruction(struct ebpf_inst inst);
 
 int
 typecheck(struct ubpf_vm* vm);
 
+int
+is_DAG(struct ubpf_vm* vm);
+int
+is_DAG_internal(struct ubpf_basic_block* bb, int* vis);
+
+int
+check_floyd(struct ubpf_vm* vm);
+
 void
-ubpf_type_compose_instructions(
-    struct ubpf_instruction_type* composed_type,
-    struct ubpf_instruction_type* current_type,
-    struct ubpf_instruction_type* next_type);
+print_type(struct ubpf_spectre_type* bb);
+
+void
+ubpf_type_compose(
+    struct ubpf_spectre_type* composed_type,
+    struct ubpf_spectre_type* current_type,
+    struct ubpf_spectre_type* next_type);
 
 #define MAXN (1024 * INST_NODE_NUM)
 #define MAXE 16384

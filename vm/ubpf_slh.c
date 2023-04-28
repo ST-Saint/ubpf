@@ -83,6 +83,7 @@ parse_ebpf_inst(struct ubpf_vm* vm)
         bb->num_inst += 1;
         if (bb->base_index == i) {
             cfg->bbq[cfg->bb_num] = bb;
+            bb->id = cfg->bb_num;
             ++cfg->bb_num;
         }
 
@@ -153,6 +154,9 @@ parse_ebpf_inst(struct ubpf_vm* vm)
             ++bb->num_inst;
             ++i;
         }
+        case EBPF_OP_EXIT: {
+            cfg->exit = bb;
+        }
         default:
             if (i + 1 < vm->num_insts) {
                 if (cfg->maps[i + 1] == NULL) {
@@ -166,7 +170,7 @@ parse_ebpf_inst(struct ubpf_vm* vm)
     }
     print_vm_insts(vm);
     print_cfg(cfg);
-    return typecheck(vm);
+    return 0;
 }
 
 void
@@ -201,7 +205,7 @@ print_inst(struct ebpf_inst* inst, uint32_t pc)
 void
 print_cfg(struct ubpf_cfg* cfg)
 {
-    fprintf(stdout, "test instrument done\n");
+    /* fprintf(stdout, "test instrument done\n"); */
 
     char* filename = "ubpf_cfg.dot";
     FILE* fp;

@@ -42,17 +42,21 @@ init_edge(struct ubpf_vm* vm)
 int
 typecheck(struct ubpf_vm* vm)
 {
-    int ret = 0;
+    int ret = 0, DAG_flag;
     printf("typecheck:\n");
     init_edge(vm);
     struct ubpf_cfg* cfg = vm->cfg;
     for (int i = 0; i < cfg->bb_num; ++i) {
-        ret |= parse_basic_block(vm, cfg->bbq[i]);
+        ret |= check_basic_block(vm, cfg->bbq[i]);
     }
-    if (ret) {
-        return ret;
+    DAG_flag = is_DAG(vm);
+    printf("is DAG: %s\n", (DAG_flag) ? "true" : "false");
+    if (DAG_flag) {
+        ret = check_DAG(vm);
+        return 1;
+    } else {
+        ret = check_floyd(vm);
     }
-    ret = check_basic_block_graph(vm);
     return ret;
 }
 
@@ -68,6 +72,31 @@ typeError(struct ubpf_vm* vm, uint32_t pc, uint32_t source_pc)
     fprintf(stdout, "stale source:\t");
     print_inst(&source_inst, source_pc);
     fprintf(stdout, "\n");
+}
+
+int
+is_DAG_internal(struct ubpf_basic_block* bb, int* vis)
+{
+    if (bb == NULL) {
+        return 1;
+    }
+    if (vis[bb->id]) {
+        return 0;
+    }
+    vis[bb->id] = 1;
+    int ret = 1;
+    ret &= is_DAG_internal(bb->fallthrough, vis);
+    ret &= is_DAG_internal(bb->jump, vis);
+    vis[bb->id] = 0;
+    return ret;
+}
+
+int
+is_DAG(struct ubpf_vm* vm)
+{
+    int visit[MAX_BASIC_BLOCK];
+    memset(visit, 0, sizeof(visit));
+    return is_DAG_internal(vm->cfg->entry, visit);
 }
 
 /* int */
@@ -231,7 +260,7 @@ check_control_data_flow(struct ubpf_vm* vm)
 }
 
 int
-check_basic_block_graph(struct ubpf_vm* vm)
+check_SCC(struct ubpf_vm* vm)
 {
     int node_num = (vm->num_insts + 1) * INST_NODE_NUM + BASE_INDEX;
     for (int i = 0; i < node_num; ++i) {
@@ -260,8 +289,80 @@ check_basic_block_graph(struct ubpf_vm* vm)
     return ret;
 }
 
+int
+check_DAG(struct ubpf_vm* vm)
+{
+    int queue[MAX_BASIC_BLOCK * 2] = {}, front = 0, end = 0;
+    int degree[MAX_BASIC_BLOCK];
+    int stale_bb_id = -1;
+    struct ubpf_cfg* cfg = vm->cfg;
+    for (int i = 0; i < cfg->bb_num; ++i) {
+        struct ubpf_basic_block* nbb;
+        nbb = cfg->bbq[i]->fallthrough;
+        if (nbb != NULL) {
+            ++degree[nbb->id];
+        }
+        nbb = cfg->bbq[i]->jump;
+        if (nbb != NULL) {
+            ++degree[nbb->id];
+        }
+        for (int j = 0; j < TYPE_DIMENSION; ++j) {
+            for (int k = 0; k < TYPE_DIMENSION; ++k) {
+                cfg->path_type[i].dist[j][k] = UNREACHABLE;
+            }
+        }
+    }
+    for (int i = 0; i < cfg->bb_num; ++i) {
+        if (degree[i] == 0) {
+            queue[end] = i;
+            ++end;
+        }
+    }
+    memcpy(&cfg->path_type[cfg->entry->id], cfg->bbq[cfg->entry->id]->type, sizeof(struct ubpf_spectre_type));
+    while (front < end) {
+        int bb_id = queue[front];
+        struct ubpf_basic_block *bb = cfg->bbq[bb_id], *nbb;
+        struct ubpf_spectre_type path_type;
+
+        ++front;
+        /* print_type(bb->type); */
+        if (cfg->path_type[bb_id].dist[SOURCE][SINK] > 0) {
+            stale_bb_id = bb_id;
+        }
+        nbb = bb->fallthrough;
+        if (nbb != NULL) {
+            ubpf_type_compose(&path_type, &cfg->path_type[bb_id], nbb->type);
+            ubpf_type_merge(&cfg->path_type[nbb->id], &path_type);
+            --degree[nbb->id];
+            /* printf("update %d with %d\n", nbb->id, bb_id); */
+            /* print_type(&cfg->path_type[nbb->id]); */
+            if (degree[nbb->id] == 0) {
+                queue[end] = nbb->id;
+                ++end;
+            }
+        }
+        nbb = bb->jump;
+        if (nbb != NULL) {
+            ubpf_type_compose(&path_type, &cfg->path_type[bb_id], nbb->type);
+            ubpf_type_merge(&cfg->path_type[nbb->id], &path_type);
+            --degree[nbb->id];
+            /* printf("update %d with %d\n", nbb->id, bb_id); */
+            /* print_type(&cfg->path_type[nbb->id]); */
+            if (degree[nbb->id] == 0) {
+                queue[end] = nbb->id;
+                ++end;
+            }
+        }
+    }
+    if (cfg->path_type[cfg->exit->id].dist[SOURCE][SINK] > 0) {
+        printf(
+            "type error: stale register in DAG %d %d\n", stale_bb_id, cfg->path_type[cfg->exit->id].dist[SOURCE][SINK]);
+    }
+    return 0;
+}
+
 void
-print_type(struct ubpf_instruction_type* type)
+print_type(struct ubpf_spectre_type* type)
 {
     for (int i = 0; i < TYPE_DIMENSION; ++i) {
         for (int j = 0; j < TYPE_DIMENSION; ++j) {
@@ -279,21 +380,21 @@ print_type(struct ubpf_instruction_type* type)
 void
 print_path(struct ubpf_vm* vm, struct ubpf_basic_block* bb)
 {
-    int S = SOURCE, T = SINK, dist = bb->type[bb->num_inst - 1].dist[S][T];
+    int S = SOURCE, T = SINK, dist = bb->types[bb->num_inst - 1].dist[S][T];
     for (int i = bb->num_inst - 1; i >= 0; --i) {
         struct ebpf_inst inst = ubpf_fetch_instruction(vm, bb->base_index + i);
-        struct ubpf_instruction_type type = parse_instruction(inst);
+        struct ubpf_spectre_type type = parse_instruction(inst);
         for (int j = 0; j < TYPE_DIMENSION; ++j) {
-            if (bb->type[i - 1].dist[S][j] + type.dist[j][T] == dist) {
+            if (bb->types[i - 1].dist[S][j] + type.dist[j][T] == dist) {
 
-                if (j == T && type.dist[j][T] == -1) {
+                if (j == T && (T == SINK || type.dist[j][T] == -1)) {
                     // fallthrough
                 } else {
                     /* printf("id: %d %d, reg: %s\n", i, j, register_name(j)); */
                     print_inst(&inst, bb->base_index + i);
                 }
                 T = j;
-                dist = bb->type[i - 1].dist[S][j];
+                dist = bb->types[i - 1].dist[S][j];
                 break;
             }
         }
@@ -304,10 +405,10 @@ print_path(struct ubpf_vm* vm, struct ubpf_basic_block* bb)
     printf("\n");
 }
 
-struct ubpf_instruction_type
+struct ubpf_spectre_type
 parse_instruction(struct ebpf_inst inst)
 {
-    struct ubpf_instruction_type type;
+    struct ubpf_spectre_type type;
     for (int i = 0; i < TYPE_DIMENSION; ++i) {
         for (int j = 0; j < TYPE_DIMENSION; ++j) {
             type.dist[i][j] = UNREACHABLE;
@@ -342,6 +443,7 @@ parse_instruction(struct ebpf_inst inst)
     case EBPF_OP_ADD_IMM:
     case EBPF_OP_SUB_IMM: {
         type.dist[inst.dst][inst.dst] = 0;
+        type.dist[SOURCE][inst.dst] = 0;
         break;
     }
 
@@ -354,18 +456,24 @@ parse_instruction(struct ebpf_inst inst)
         // MUL: set staleness to 2
     case EBPF_OP_MUL_IMM:
     case EBPF_OP_MUL64_IMM: {
+        type.dist[inst.dst][inst.dst] = mult_latency;
+        type.dist[SOURCE][inst.dst] = mult_latency;
         break;
     }
 
     // DIV: set staleness to 6
     case EBPF_OP_DIV_IMM:
     case EBPF_OP_DIV64_IMM: {
+        type.dist[inst.dst][inst.dst] = div_latency;
+        type.dist[SOURCE][inst.dst] = div_latency;
         break;
     }
 
     // MOD: set staleness 8
     case EBPF_OP_MOD_IMM:
     case EBPF_OP_MOD64_IMM: {
+        type.dist[inst.dst][inst.dst] = mod_latency;
+        type.dist[SOURCE][inst.dst] = mod_latency;
         break;
     }
 
@@ -394,6 +502,7 @@ parse_instruction(struct ebpf_inst inst)
     case EBPF_OP_ARSH64_REG: {
         type.dist[inst.src][inst.dst] = 0;
         type.dist[inst.dst][inst.dst] = 0;
+        type.dist[SOURCE][inst.dst] = 0;
         break;
     }
 
@@ -401,6 +510,7 @@ parse_instruction(struct ebpf_inst inst)
     case EBPF_OP_MOV64_REG: {
         type.dist[inst.dst][inst.dst] = UNREACHABLE;
         type.dist[inst.src][inst.dst] = 0;
+        type.dist[SOURCE][inst.dst] = 0;
         break;
     }
 
@@ -455,6 +565,7 @@ parse_instruction(struct ebpf_inst inst)
     }
     case EBPF_OP_LDDW: {
         type.dist[inst.dst][inst.dst] = 0;
+        type.dist[SOURCE][inst.dst] = 0;
         break;
     }
 
@@ -514,8 +625,6 @@ parse_instruction(struct ebpf_inst inst)
     case EBPF_OP_JGE_REG: {
         type.dist[inst.dst][SINK] = 0;
         type.dist[inst.src][SINK] = 0;
-        type.sink[inst.dst] = 0;
-        type.sink[inst.src] = 0;
         break;
     }
     }
@@ -523,11 +632,43 @@ parse_instruction(struct ebpf_inst inst)
     return type;
 }
 
+int
+check_floyd(struct ubpf_vm* vm)
+{
+    return vm->num_insts > 0;
+}
+
 void
-ubpf_type_compose_instructions(
-    struct ubpf_instruction_type* composed_type,
-    struct ubpf_instruction_type* current_type,
-    struct ubpf_instruction_type* next_type)
+ubpf_type_closure(struct ubpf_spectre_type* closure_type, struct ubpf_spectre_type* type)
+{
+    memcpy(closure_type, type, sizeof(struct ubpf_spectre_type));
+    for (int k = 0; k < TYPE_DIMENSION; ++k) {
+        for (int i = 0; i < TYPE_DIMENSION; ++i) {
+            for (int j = 0; j < TYPE_DIMENSION; ++j) {
+                if (closure_type->dist[i][k] != UNREACHABLE && closure_type->dist[k][j] != UNREACHABLE) {
+                    closure_type->dist[i][j] =
+                        max_distance(closure_type->dist[i][j], closure_type->dist[i][k] + closure_type->dist[k][j]);
+                }
+            }
+        }
+    }
+}
+
+void
+ubpf_type_merge(struct ubpf_spectre_type* merge_type, struct ubpf_spectre_type* type)
+{
+    for (int i = 0; i < TYPE_DIMENSION; ++i) {
+        for (int j = 0; j < TYPE_DIMENSION; ++j) {
+            merge_type->dist[i][j] = max_distance(merge_type->dist[i][j], type->dist[i][j]);
+        }
+    }
+}
+
+void
+ubpf_type_compose(
+    struct ubpf_spectre_type* composed_type,
+    struct ubpf_spectre_type* current_type,
+    struct ubpf_spectre_type* next_type)
 {
     for (int i = 0; i < TYPE_DIMENSION; ++i) {
         for (int j = 0; j < TYPE_DIMENSION; ++j) {
@@ -547,30 +688,33 @@ ubpf_type_compose_instructions(
 }
 
 int
-parse_basic_block(struct ubpf_vm* vm, struct ubpf_basic_block* bb)
+check_basic_block(struct ubpf_vm* vm, struct ubpf_basic_block* bb)
 {
     uint32_t num = bb->num_inst, pc;
     struct ebpf_inst inst = ubpf_fetch_instruction(vm, bb->base_index);
-    struct ubpf_instruction_type type;
+    struct ubpf_spectre_type type;
     type = parse_instruction(inst);
-    memcpy(bb->type + 0, &type, sizeof(struct ubpf_instruction_type));
+    memcpy(bb->types + 0, &type, sizeof(struct ubpf_spectre_type));
     /* staleness = calloc(16, sizeof(uint32_t)); */
     for (uint32_t i = 1; i < num; ++i) {
         pc = bb->base_index + i;
         inst = ubpf_fetch_instruction(vm, pc);
         type = parse_instruction(inst);
-        ubpf_type_compose_instructions(bb->type + i, bb->type + i - 1, &type);
-        printf("index: %d:\n", i);
-        print_type(bb->type + i);
+        ubpf_type_compose(bb->types + i, bb->types + i - 1, &type);
+        /* printf("index: %d:\n", i); */
+        /* print_type(bb->types + i); */
         if (inst.opcode == EBPF_OP_LDXDW) {
-            memcpy(bb->type + i + 1, bb->type + i, sizeof(struct ubpf_instruction_type));
+            memcpy(bb->types + i + 1, bb->types + i, sizeof(struct ubpf_spectre_type));
             ++i;
         }
     }
-    printf("index: %d:\n", bb->base_index);
-    print_type(bb->type + bb->num_inst - 1);
-    if (bb->type[bb->num_inst - 1].dist[SOURCE][SINK] > 0) {
-        printf("type error: %d %d\n", bb->base_index, bb->type[bb->num_inst - 1].dist[SOURCE][SINK]);
+    bb->type = bb->types + bb->num_inst - 1;
+    /* printf("index: %d:\n", bb->base_index); */
+    /* print_type(bb->type); */
+    if (bb->types[bb->num_inst - 1].dist[SOURCE][SINK] > 0) {
+
+        printf(
+            "Type error: speculative register used in basic block %d(entry instruction: %d)\n", bb->id, bb->base_index);
         print_path(vm, bb);
         return 1;
     }
@@ -608,13 +752,13 @@ to_register(int node)
 int
 max_distance(int dist1, int dist2)
 {
-    if (dist1 == UNREACHABLE && dist2 == UNREACHABLE) {
-        return UNREACHABLE;
+    if (dist1 != UNREACHABLE && dist2 != UNREACHABLE) {
+        return max(dist1, dist2);
     } else if (dist1 != UNREACHABLE) {
         return dist1;
     } else if (dist2 != UNREACHABLE) {
         return dist2;
     } else {
-        return max(dist1, dist2);
+        return UNREACHABLE;
     }
 }

@@ -35,6 +35,7 @@
 #include "ubpf_int.h"
 #include "ubpf.h"
 #include "ubpf_slh.h"
+#include "ubpf_typesystem.h"
 
 #include "../bpf/bpf.h"
 
@@ -288,8 +289,8 @@ load:
         fclose(fp); // Close the file
         /* struct ebpf_inst* slh_insts = calloc(65536, sizeof(struct ebpf_inst)); */
         /* instrument_slh(vm, vm->cfg->entry, slh_insts); */
-
-        if (parse_ebpf_inst(vm)) {
+        parse_ebpf_inst(vm);
+        if (typecheck(vm)) {
             fprintf(stderr, "BPF program is speculative vulnerable\n");
             return 1;
         }
