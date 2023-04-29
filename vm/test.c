@@ -293,6 +293,8 @@ load:
         if (typecheck(vm)) {
             fprintf(stderr, "BPF program is speculative vulnerable\n");
             return 1;
+        } else {
+            fprintf(stdout, "BPF program is type safe\n");
         }
         ret = fn(mem, mem_len);
     } else {

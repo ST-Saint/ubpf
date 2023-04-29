@@ -47,6 +47,9 @@ is_DAG_internal(struct ubpf_basic_block* bb, int* vis);
 int
 check_floyd(struct ubpf_vm* vm);
 
+int
+check_loop(struct ubpf_vm* vm);
+
 void
 print_type(struct ubpf_spectre_type* bb);
 

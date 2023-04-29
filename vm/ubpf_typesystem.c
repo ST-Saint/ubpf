@@ -53,9 +53,8 @@ typecheck(struct ubpf_vm* vm)
     printf("is DAG: %s\n", (DAG_flag) ? "true" : "false");
     if (DAG_flag) {
         ret = check_DAG(vm);
-        return 1;
     } else {
-        ret = check_floyd(vm);
+        ret = check_loop(vm);
     }
     return ret;
 }
@@ -124,139 +123,45 @@ is_DAG(struct ubpf_vm* vm)
 int
 check_loop(struct ubpf_vm* vm)
 {
-    printf("check_loop\n");
-    int node_num = (vm->num_insts + 1) * INST_NODE_NUM + BASE_INDEX;
-    int ret = 0, source = 0;
-    for (int i = BASE_INDEX; i < node_num; ++i) {
-        if (dist[i][i] > 0) {
-            ret = 1;
-            source = i;
-            break;
+    printf("check_loop: ");
+    int node_num = vm->cfg->bb_num * 16 + 2;
+    int ret = 0, source = node_num - 2, sink = node_num - 1;
+    for (int i = 0; i < node_num; ++i) {
+        for (int j = 0; j < node_num; ++j) {
+            dist[i][j] = UNREACHABLE;
         }
     }
-    if (source != 0) {
-        printf("Type error: speculative loop %d\n", source);
-        /* return dfs(vm, source); */
-        int pc = 0, reg = 0, out = 0;
-        while (!out) {
-            pc = to_pc(source);
-            reg = to_register(source);
-            struct ebpf_inst inst = ubpf_fetch_instruction(vm, pc);
-            switch (inst.opcode) {
-            case EBPF_OP_JA:
-            case EBPF_OP_JEQ_IMM:
-            case EBPF_OP_JEQ_REG:
-            case EBPF_OP_JEQ32_IMM:
-            case EBPF_OP_JEQ32_REG:
-            case EBPF_OP_JGT_IMM:
-            case EBPF_OP_JGT_REG:
-            case EBPF_OP_JGT32_IMM:
-            case EBPF_OP_JGT32_REG:
-            case EBPF_OP_JGE_IMM:
-            case EBPF_OP_JGE_REG:
-            case EBPF_OP_JGE32_IMM:
-            case EBPF_OP_JGE32_REG:
-            case EBPF_OP_JLT_IMM:
-            case EBPF_OP_JLT_REG:
-            case EBPF_OP_JLT32_IMM:
-            case EBPF_OP_JLT32_REG:
-            case EBPF_OP_JLE_IMM:
-            case EBPF_OP_JLE_REG:
-            case EBPF_OP_JLE32_IMM:
-            case EBPF_OP_JLE32_REG:
-            case EBPF_OP_JSET_IMM:
-            case EBPF_OP_JSET_REG:
-            case EBPF_OP_JSET32_IMM:
-            case EBPF_OP_JSET32_REG:
-            case EBPF_OP_JNE_IMM:
-            case EBPF_OP_JNE_REG:
-            case EBPF_OP_JNE32_IMM:
-            case EBPF_OP_JNE32_REG:
-            case EBPF_OP_JSGT_IMM:
-            case EBPF_OP_JSGT_REG:
-            case EBPF_OP_JSGT32_IMM:
-            case EBPF_OP_JSGT32_REG:
-            case EBPF_OP_JSGE_IMM:
-            case EBPF_OP_JSGE_REG:
-            case EBPF_OP_JSGE32_IMM:
-            case EBPF_OP_JSGE32_REG:
-            case EBPF_OP_JSLT_IMM:
-            case EBPF_OP_JSLT_REG:
-            case EBPF_OP_JSLT32_IMM:
-            case EBPF_OP_JSLT32_REG:
-            case EBPF_OP_JSLE_IMM:
-            case EBPF_OP_JSLE_REG:
-            case EBPF_OP_JSLE32_IMM:
-            case EBPF_OP_JSLE32_REG:
-                print_inst(&inst, pc);
-                out = 1;
-                break;
+    for (int i = 0; i < vm->cfg->bb_num; ++i) {
+        struct ubpf_basic_block* bb = vm->cfg->bbq[i];
+        int base = i * 16;
+        for (int j = RAX; j < R15; ++j) {
+            for (int k = RAX; k < R15; ++k) {
+                dist[base + j][base + k] = bb->type->dist[j][k];
             }
-            if (out) {
-                break;
-            }
-            int node;
-
-            printf("reg %s\n", register_name(reg));
-            if (reg == COMP_NODE) {
-                // Application
-                int find = 0;
-                for (int i = RAX; i <= R15; ++i) {
-                    node = get_node(pc + 1, i);
-                    if (edges[source][node] != UNREACHABLE && dist[node][node] > 0) {
-                        print_inst(&inst, pc);
-                        source = node;
-                        find = 1;
-                        break;
-                    }
-                }
-                if (find) {
-                    continue;
-                }
-            } else {
-                // Regular register
-                // fallthrough
-                node = get_node(pc + 1, reg);
-                if (edges[source][node] != UNREACHABLE && dist[node][node] > 0) {
-                    source = node;
-                    continue;
-                }
-                // register usage
-                node = get_node(pc, COMP_NODE);
-                if (edges[source][node] != UNREACHABLE && dist[node][node] > 0) {
-                    source = node;
-                    continue;
-                }
-            }
-            break;
+            dist[source][base + j] = bb->type->dist[source][j];
+            dist[base + j][sink] = bb->type->dist[j][SINK];
         }
+    }
+    for (int k = 0; k < node_num; ++k) {
+        for (int i = 0; i < node_num; ++i) {
+            for (int j = 0; j < node_num; ++j) {
+                if (dist[i][k] == UNREACHABLE || dist[k][j] == UNREACHABLE) {
+                    continue;
+                }
+                int distance = dist[i][k] + dist[k][j];
+                if (distance > dist[i][j]) {
+                    dist[i][j] = distance;
+                }
+            }
+        }
+    }
+    if (dist[source][sink] > 0) {
+        ret = 1;
+        printf("\nType error: register latency may accumulate in a dependent loop\n");
+    } else {
+        printf("type safe\n");
     }
     return ret;
-}
-
-int
-check_control_data_flow(struct ubpf_vm* vm)
-{
-    int node_num = (vm->num_insts + 1) * INST_NODE_NUM + BASE_INDEX;
-    if (dist[SOURCE][SINK] > 0) {
-        /* printf("source sink: %d\n", dist[SOURCE][SINK]); */
-        printf("Type error: specluative jmp/ld/st\n");
-        int src = SOURCE, pc = -1;
-        for (int i = BASE_INDEX; i < node_num; ++i) {
-            if (dist[src][i] + dist[i][SINK] == dist[src][SINK]) {
-                if (to_pc(i) != pc) {
-                    pc = to_pc(i);
-                    struct ebpf_inst inst = ubpf_fetch_instruction(vm, pc);
-                    print_inst(&inst, pc);
-                }
-                src = i;
-                /* printf("source i: %d %d %d %d\n", to_pc(i), to_register(i), dist[SOURCE][i], dist[i][SINK]); */
-            }
-        }
-        printf("\n\n");
-        return 1;
-    }
-    return 0;
 }
 
 int
@@ -281,12 +186,7 @@ check_SCC(struct ubpf_vm* vm)
             }
         }
     }
-    int ret = 0;
-    ret |= check_loop(vm);
-    if (!ret) {
-        ret |= check_control_data_flow(vm);
-    }
-    return ret;
+    return 0;
 }
 
 int
@@ -564,8 +464,15 @@ parse_instruction(struct ebpf_inst inst)
         break;
     }
     case EBPF_OP_LDDW: {
-        type.dist[inst.dst][inst.dst] = 0;
-        type.dist[SOURCE][inst.dst] = 0;
+        if (inst.src == 0) {
+            // EBPF_OP_LDDW
+            type.dist[inst.dst][inst.dst] = 0;
+            type.dist[SOURCE][inst.dst] = 0;
+        } else {
+            // EBPF_OP_PSEUDO
+            type.dist[inst.dst][inst.dst] = UNREACHABLE;
+            type.dist[SOURCE][inst.dst] = 0;
+        }
         break;
     }
 
